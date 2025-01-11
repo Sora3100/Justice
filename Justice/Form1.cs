@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.IO;
+using System.Runtime.InteropServices.ComTypes;
 
 namespace Justice
 {
@@ -18,11 +19,12 @@ namespace Justice
             InitializeComponent();
         }
 
-        private void button1_Click(object sender, EventArgs e)
+    private void button1_Click(object sender, EventArgs e)
         {
             button1.Enabled = false;
             button2.Enabled = false;
             button3.Enabled = false;
+            vitaCheckBox.Enabled = false;
 
             richTextBox1.Clear();
 
@@ -38,11 +40,16 @@ namespace Justice
                 head.eafMagic = new byte[4];
 
                 System.Buffer.BlockCopy(br.ReadBytes(0x4), 0, head.eafMagic, 0, 0x4);
-                head.eafVersion = BitConverter.ToInt32(br.ReadBytes(0x4).Reverse().ToArray(), 0);
+                //head.eafVersion = BitConverter.ToInt32(br.ReadBytes(0x4).Reverse().ToArray(), 0);
+                head.eafUnk1 = BitConverter.ToInt32(br.ReadBytes(0x4), 0);
                 head.eafSize = BitConverter.ToInt64(br.ReadBytes(0x8), 0);
                 head.eafFileNum = BitConverter.ToInt32(br.ReadBytes(0x4), 0);
-                head.eafUnk = BitConverter.ToInt32(br.ReadBytes(0x4), 0);
-                br.BaseStream.Position += 0x48; // skip reserved space unless it becomes used one day
+                head.eafUnk2 = BitConverter.ToInt32(br.ReadBytes(0x4), 0);
+                //richTextBox1.Text += "DEBUG: (before) " + br.BaseStream.Position + "\r\n";
+                //richTextBox1.Update();
+                br.BaseStream.Position += 0x58; // skip reserved space unless it becomes used one day
+                //richTextBox1.Text += "DEBUG: (after) " + br.BaseStream.Position + "\r\n";
+                //richTextBox1.Update();
 
                 string magic = Encoding.ASCII.GetString(head.eafMagic);
 
@@ -50,14 +57,13 @@ namespace Justice
                 {
                     richTextBox1.Text += "> Looks like a valid EAF magic!\r\n";
 
-                    if (head.eafVersion != 0x100)
-                        richTextBox1.Text += "> WARNING: Not a version 1.00 EAF?\r\n";
+                    richTextBox1.Text += "> Unknown value 1: " + head.eafUnk1 + "\r\n";
 
                     if (head.eafSize != br.BaseStream.Length)
                         richTextBox1.Text += "> WARNING: EAF size discrepancy?\r\n";
 
                     richTextBox1.Text += "> Files in this EAF: " + head.eafFileNum + "\r\n";
-                    richTextBox1.Text += "> Unknown value: " + head.eafUnk + "\r\n";
+                    richTextBox1.Text += "> Unknown value 2: " + head.eafUnk2 + "\r\n";
 
                     // Read File Table
                     // note: the first file seems to not include its offset and size
@@ -65,19 +71,12 @@ namespace Justice
                     EAFFileInfo[] eafFileInfo = new EAFFileInfo[head.eafFileNum];
                     for (int i = 0; i < head.eafFileNum; i++)
                     {
+                        eafFileInfo[i].beforeNamePadding = br.ReadBytes(0x10);
+                        eafFileInfo[i].eafFileName = Encoding.ASCII.GetString(br.ReadBytes(0x100)).Split('\0')[0];
+                        Console.WriteLine(eafFileInfo[i].eafFileName);
                         eafFileInfo[i].eafFileOffset = BitConverter.ToInt64(br.ReadBytes(0x8), 0);
                         eafFileInfo[i].eafFileSize = BitConverter.ToInt64(br.ReadBytes(0x8), 0);
-                        eafFileInfo[i].eafFileReserved1 = BitConverter.ToInt64(br.ReadBytes(0x8), 0);
-                        eafFileInfo[i].eafFileReserved1 = BitConverter.ToInt64(br.ReadBytes(0x8), 0);
-                        eafFileInfo[i].eafFileName = Encoding.ASCII.GetString(br.ReadBytes(0x100)).Split('\0')[0];
                     }
-
-                    // seems there is an extra offset and size at the end
-                    // could this be the first file's information? why's it separated from the file name?
-                    eafFileInfo[0].eafFileOffset = BitConverter.ToInt64(br.ReadBytes(0x8), 0);
-                    eafFileInfo[0].eafFileSize = BitConverter.ToInt64(br.ReadBytes(0x8), 0);
-                    eafFileInfo[0].eafFileReserved1 = BitConverter.ToInt64(br.ReadBytes(0x8), 0);
-                    eafFileInfo[0].eafFileReserved1 = BitConverter.ToInt64(br.ReadBytes(0x8), 0);
 
                     // Visit Files & Extract
                     string path;
@@ -89,8 +88,8 @@ namespace Justice
                         br.BaseStream.Position = eafFileInfo[i].eafFileOffset;
 
                         path = Path.GetDirectoryName(openFileDialog1.FileName);
-                        path += '/' + Path.GetFileNameWithoutExtension(openFileDialog1.FileName);
-                        path += '/' + Path.GetDirectoryName(eafFileInfo[i].eafFileName);
+                        path = Path.Combine(path, Path.GetFileNameWithoutExtension(openFileDialog1.FileName));
+                        path = Path.Combine(path, Path.GetDirectoryName(eafFileInfo[i].eafFileName));
 
                         if (!Directory.Exists(path))
                             Directory.CreateDirectory(path);
@@ -117,6 +116,7 @@ namespace Justice
                 br.Close();
                 fs.Close();
             }
+            vitaCheckBox.Enabled = true;
             button1.Enabled = true;
             button2.Enabled = true;
             button3.Enabled = true;
@@ -127,19 +127,29 @@ namespace Justice
             button1.Enabled = false;
             button2.Enabled = false;
             button3.Enabled = false;
+            vitaCheckBox.Enabled = false;
             richTextBox1.Clear();
 
             FolderSelect.FolderSelectDialog fsd = new FolderSelect.FolderSelectDialog();
             fsd.Title = "Please select a folder to repack.";
             if (fsd.ShowDialog(IntPtr.Zero))
             {
-                byte[] eafHead = new byte[0x60];
+                byte[] eafHead = new byte[0x70];
                 eafHead[0x00] = 0x23;
                 eafHead[0x01] = 0x45;
                 eafHead[0x02] = 0x41;
                 eafHead[0x03] = 0x46;
-                eafHead[0x06] = 0x01;
+
+                if (vitaCheckBox.Checked)
+                {
+                    eafHead[0x06] = 0x01; //Vita
+                } else
+                {
+                    eafHead[0x05] = 0x93; //PC
+                }
+
                 eafHead[0x14] = 0x01;
+                
 
                 File.WriteAllBytes(Path.GetDirectoryName(fsd.FileName) + "/" + "eafHead.bin", eafHead);
                 File.WriteAllText(Path.GetDirectoryName(fsd.FileName) + "/" + "eafTable.bin", String.Empty);
@@ -151,6 +161,25 @@ namespace Justice
                 int fileCount = 0;
                 ProcessTable(fsd.FileName, Path.GetDirectoryName(fsd.FileName) + "/" + "eafTable.bin", fsd.FileName.Length + 1, ref fileCount);
 
+                Int64 headerSize = eafHead.Length + fileCount * 0x120;
+                Int64 PaddingToWrite = (byte)(headerSize & 0xFF); //get smallest byte
+                PaddingToWrite = 0x100 - PaddingToWrite;
+                if (PaddingToWrite != 0)
+                {
+                    FileStream paddingFS = new FileStream(Path.GetDirectoryName(fsd.FileName) + "/" + "eafTable.bin", FileMode.Append, FileAccess.Write);
+                    BinaryWriter paddingBW = new BinaryWriter(paddingFS);
+
+                    paddingBW.BaseStream.Position = fileCount * 0x120;
+                    //paddingBW.Write(0xDEADBEEF);
+                    for (int i = 0; i < PaddingToWrite; i++)
+                    {
+                        paddingBW.Write((byte)0x0);
+                    }
+
+                    paddingBW.Close();
+                    paddingFS.Close();
+                }                
+
                 richTextBox1.Text += "> Finished writing table...\r\n";
                 richTextBox1.Text += "> Packing file(s)...\r\n";
                 richTextBox1.Update();
@@ -158,44 +187,59 @@ namespace Justice
                 FileStream fs = new FileStream(Path.GetDirectoryName(fsd.FileName) + "/" + "eafTable.bin", FileMode.Open);
                 BinaryWriter bw = new BinaryWriter(fs);
                 BinaryReader br = new BinaryReader(fs);
-                bw.BaseStream.Position = 0;
-                ProcessBigPack(fsd.FileName, Path.GetDirectoryName(fsd.FileName) + "/" + "eafBigFile.bin", ref bw);
+                bw.BaseStream.Position = 0x110;
+
+                int bigFileCount = 0;
+                ProcessBigPack(fsd.FileName, Path.GetDirectoryName(fsd.FileName) + "/" + "eafBigFile.bin", ref bw, ref fileCount, ref bigFileCount);
 
                 richTextBox1.Text += "> File(s) packed...\r\n";
                 richTextBox1.Update();
 
-                bw.BaseStream.Position = 0;
-                byte[] file0 = br.ReadBytes(0x10);
+                //bw.BaseStream.Position = 0;
+                //byte[] file0 = br.ReadBytes(0x10);
 
-                bw.BaseStream.Position = 0;
-                byte[] file0_Infos = new byte[0x10];
-                bw.Write(file0_Infos, 0, 0x10);
+                //bw.BaseStream.Position = 0;
+                //byte[] file0_Infos = new byte[0x10];
+                //bw.Write(file0_Infos, 0, 0x10);
 
                 br.Close();
                 bw.Close();
                 fs.Close();
-
+                
                 backgroundWorker1.ReportProgress(0);
                 label1.Text = "Building EAF...";
                 label1.Update();
 
-                using (FileStream stream = new FileStream(Path.GetDirectoryName(fsd.FileName) + "/" + "eafTable.bin", FileMode.Append))
-                {
-                    stream.Write(file0, 0, file0.Length);
-                }
+                //using (FileStream stream = new FileStream(Path.GetDirectoryName(fsd.FileName) + "/" + "eafTable.bin", FileMode.Append))
+                //{
+                //    stream.Write(file0, 0, file0.Length);
+                //}
 
                 File.WriteAllText(Path.GetDirectoryName(fsd.FileName) + "/" + Path.GetFileName(fsd.FileName) + "_new.eaf", String.Empty);
 
                 byte[] head = File.ReadAllBytes(Path.GetDirectoryName(fsd.FileName) + "/" + "eafHead.bin");
                 byte[] table = File.ReadAllBytes(Path.GetDirectoryName(fsd.FileName) + "/" + "eafTable.bin");
-                byte[] bfile = File.ReadAllBytes(Path.GetDirectoryName(fsd.FileName) + "/" + "eafBigFile.bin");
+
+                const int chunksize = 1024 * 1024 * 1024;
+                byte[] buffer = new byte[chunksize];
+
+                string bfilePath = Path.GetDirectoryName(fsd.FileName) + "/" + "eafBigFile.bin";
 
                 long eafSize = 0;
+
+                using (FileStream tempfs = new FileStream(bfilePath, FileMode.Open, FileAccess.Read))
                 using (FileStream stream = new FileStream(Path.GetDirectoryName(fsd.FileName) + "/" + Path.GetFileName(fsd.FileName) + "_new.eaf", FileMode.Append))
                 {
                     stream.Write(head, 0, head.Length);
                     stream.Write(table, 0, table.Length);
-                    stream.Write(bfile, 0, bfile.Length);
+
+                    int bytesRead;
+                    while ((bytesRead = tempfs.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        stream.Write(buffer, 0, bytesRead);
+                    }
+
+                    //stream.Write(bfile, 0, bfile.Length);
                     eafSize = stream.Length;
                 }
 
@@ -227,6 +271,7 @@ namespace Justice
                 label1.Text = "Nothing to process...";
             }
 
+            vitaCheckBox.Enabled = true;
             button1.Enabled = true;
             button2.Enabled = true;
             button3.Enabled = true;
@@ -237,6 +282,7 @@ namespace Justice
             string[] fileEntries = Directory.GetFiles(sourceDirectory);
             foreach (string fileName in fileEntries)
             {
+                //totalFileSize += fileName.Length;
                 ProcessTableFile(fileName, baseDirectory, sourceDirLength);
                 fileCount++;
             }
@@ -251,17 +297,20 @@ namespace Justice
             backgroundWorker1.ReportProgress(0);
 
             FileInfo info = new FileInfo(path);
-            byte[] fileInfo = new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+            byte[] fileInfo = new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }; //padding
             byte[] fileName = Encoding.ASCII.GetBytes(path.Substring(sourceDirLength));
             for(int i = 0; i < fileName.Length; i++)
             {
                 if (fileName[i] == 0x5C)
                     fileName[i] = 0x2F;
             }
-            fileInfo = fileInfo.Concat(BitConverter.GetBytes(info.Length)).ToArray();
-            fileInfo = fileInfo.Concat(new byte[0x10]).ToArray();
-            fileInfo = fileInfo.Concat(fileName).ToArray();
-            fileInfo = fileInfo.Concat(new byte[0x100 - fileName.Length]).ToArray();
+
+            fileInfo = fileInfo.Concat(fileName).ToArray(); //name
+            fileInfo = fileInfo.Concat(new byte[0x100 - fileName.Length]).ToArray(); //padding until info
+            fileInfo = fileInfo.Concat(new byte[0x8]).ToArray(); //data
+            //fileInfo = fileInfo.Concat(new byte[0x10]).ToArray(); //padding
+            //fileInfo = fileInfo.Concat(BitConverter.GetBytes(totalFileSize)).ToArray(); 
+            fileInfo = fileInfo.Concat(BitConverter.GetBytes(info.Length)).ToArray(); //info of curr file
 
             using (FileStream stream = new FileStream(baseDirectory, FileMode.Append))
             {
@@ -274,21 +323,22 @@ namespace Justice
             label1.Update();
         }
 
-        public void ProcessBigPack(string sourceDirectory, string bigFile, ref BinaryWriter bw)
+        public void ProcessBigPack(string sourceDirectory, string bigFile, ref BinaryWriter bw, ref int fileCount, ref int bigFileCount)
         {
             string[] fileEntries = Directory.GetFiles(sourceDirectory);
             foreach (string fileName in fileEntries)
             {
-                ProcessBigPackFiles(fileName, bigFile, ref bw);
+                ProcessBigPackFiles(fileName, bigFile, ref bw, ref fileCount, ref bigFileCount);
                 bw.BaseStream.Position += 0x118; // skip rest of current file's info in the table
+                bigFileCount++;
             }
 
             string[] subdirectoryEntries = Directory.GetDirectories(sourceDirectory);
             foreach (string subdirectory in subdirectoryEntries)
-                ProcessBigPack(subdirectory, bigFile, ref bw);
+                ProcessBigPack(subdirectory, bigFile, ref bw, ref fileCount, ref bigFileCount);
         }
 
-        public void ProcessBigPackFiles(string path, string bigFile, ref BinaryWriter bw)
+        public void ProcessBigPackFiles(string path, string bigFile, ref BinaryWriter bw, ref int fileCount, ref int bigFileCount)
         {
             backgroundWorker1.ReportProgress(0);
 
@@ -296,13 +346,37 @@ namespace Justice
 
             long prevBigFileLen = 0;
 
+            //using (FileStream prevstream = new FileStream(bigFile, FileMode.Open, FileAccess.Write))
+            //{
+            //    prevBigFileLen = prevstream.Length;
+            //    prevstream.Seek(-0x10, SeekOrigin.End);
+            //    prevstream.Write(baseFile, 0, baseFile.Length);
+            //}
+
             using (FileStream stream = new FileStream(bigFile, FileMode.Append))
             {
                 prevBigFileLen = stream.Length;
-                stream.Write(baseFile, 0, baseFile.Length);
+                stream.Write(baseFile, 0, baseFile.Length); //writes to the end of file stuff
+
+                int PaddingToWrite = baseFile.Length;
+                PaddingToWrite = PaddingToWrite & 0xFF;
+                PaddingToWrite = 0x100 - PaddingToWrite;
+                if (fileCount-1 > bigFileCount)
+                {
+                    for (int j = 0; j < PaddingToWrite; j++)
+                    {
+                        stream.WriteByte(0x0); //padding to align file
+                    }
+                }
+
+                //stream.Write(baseFile, 8, BitConverter.ToInt64(stream.Length).ToArray());
+                //stream.Write(baseFile, 8, 0);
             }
 
+            //bw.Write(bw.BaseStream.Length);
+            //bw.BaseStream.Position += 0x110; //go to offset
             bw.Write(0x60 + bw.BaseStream.Length + 0x10 + prevBigFileLen); // header + table + additional table size + where ever the big file left off at
+            //bw.BaseStream.Position = 0x118; //go to file size
 
             backgroundWorker1.ReportProgress(100);
             label1.Text = "Packed " + Path.GetFileName(path);
@@ -320,6 +394,7 @@ namespace Justice
 
         private void button3_Click(object sender, EventArgs e)
         {
+            vitaCheckBox.Enabled = false;
             button1.Enabled = false;
             button2.Enabled = false;
             button3.Enabled = false;
@@ -327,9 +402,15 @@ namespace Justice
             About box = new About();
             box.ShowDialog();
 
+            vitaCheckBox.Enabled = true;
             button1.Enabled = true;
             button2.Enabled = true;
             button3.Enabled = true;
+        }
+
+        private void checkBox1_CheckedChanged(object sender, EventArgs e)
+        {
+
         }
     }
 }

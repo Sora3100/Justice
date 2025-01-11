@@ -36,6 +36,7 @@
             this.label1 = new System.Windows.Forms.Label();
             this.backgroundWorker1 = new System.ComponentModel.BackgroundWorker();
             this.button3 = new System.Windows.Forms.Button();
+            this.vitaCheckBox = new System.Windows.Forms.CheckBox();
             this.SuspendLayout();
             // 
             // button1
@@ -99,11 +100,23 @@
             this.button3.UseVisualStyleBackColor = true;
             this.button3.Click += new System.EventHandler(this.button3_Click);
             // 
+            // vitaCheckBox
+            // 
+            this.vitaCheckBox.AutoSize = true;
+            this.vitaCheckBox.Location = new System.Drawing.Point(256, 17);
+            this.vitaCheckBox.Name = "vitaCheckBox";
+            this.vitaCheckBox.Size = new System.Drawing.Size(44, 17);
+            this.vitaCheckBox.TabIndex = 7;
+            this.vitaCheckBox.Text = "Vita";
+            this.vitaCheckBox.UseVisualStyleBackColor = true;
+            this.vitaCheckBox.CheckedChanged += new System.EventHandler(this.checkBox1_CheckedChanged);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(511, 356);
+            this.Controls.Add(this.vitaCheckBox);
             this.Controls.Add(this.button3);
             this.Controls.Add(this.label1);
             this.Controls.Add(this.progressBar1);
@@ -129,6 +142,7 @@
         private System.Windows.Forms.Label label1;
         private System.ComponentModel.BackgroundWorker backgroundWorker1;
         private System.Windows.Forms.Button button3;
+        private System.Windows.Forms.CheckBox vitaCheckBox;
     }
 }
 
